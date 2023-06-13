@@ -1,4 +1,4 @@
-source("C:/Users/nf18217/OneDrive - University of Bristol/Documents/Projects/active/cis_mr_functions.R")
+library(TwoStepCisMR)
 #setwd("C:/Users/nf18217/OneDrive - University of Bristol/Documents/Projects/active/cis canabis")
 library(data.table)
 library(coloc)
