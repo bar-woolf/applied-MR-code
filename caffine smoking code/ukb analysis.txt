@@ -1,0 +1,208 @@
+library("devtools")
+library("plyr")
+library("Rtools")
+library("dplyr")
+library("data.table")
+library(TwoSampleMR)
+source("C:\\Users\\nf18217\\OneDrive - University of Bristol\\Documents\\Projects\\active\\RM MSc thesis min phenotypes\\pgrs\\mrbase grs\\mrbase_grs_v3.01.R")
+
+setwd("C:\\Users\\nf18217\\OneDrive - University of Bristol\\Documents\\Projects\\active\\AA done or published\\caffine bmi t2d\\caffine and other outcomes\\grs")
+
+
+exp <-read.csv("C:\\Users\\nf18217\\OneDrive - University of Bristol\\Documents\\Projects\\active\\AA done or published\\caffine bmi t2d\\caff_snps_em5_r.3.csv",header=T)
+mrbase_grs(output ="code",exposure_dat = exp,  suffix = "caff", plink_grs = TRUE) # run mr-base grs and clump
+
+
+exp2<-exp[c("SNP","pval.exposure")]
+exp2$pval.exposure<-0
+
+
+smk<-read_exposure_data(  "C:/Users/nf18217/OneDrive - University of Bristol/Documents/Projects/active/passive smoking/Lifetime_Smoking_Sheet2.txt", chr_col = "CHR",  sep = " ",  snp_col = "SNP",  beta_col = "BETA",  se_col = "SE",  eaf_col = "EAF",  effect_allele_col = "EFFECT_ALLELE",  other_allele_col = "OTHER_ALLELE",pval_col = "P")
+out2<-smk[c("SNP","pval.exposure")]
+snp<-clump_data(rbind(exp2,out2))
+smk<-smk[smk$SNP %in% snp$SNP[!(snp$SNP%in%exp2$SNP)] ,]
+mrbase_grs(output ="code",exposure_dat = smk,  suffix = "smk", plink_grs = TRUE) # run mr-base grs and clump
+
+
+
+
+
+######################################################################################################################################
+######################################################################################################################################
+
+
+
+module load languages/r/3.6.2
+R
+install.packages("fixest")
+
+library(data.table)
+library(fixest)
+
+df<-fread("/projects/MRC-IEU/research/data/ukbiobank/phenotypic/applications/15825/released/2022-02-01/data/data.48733.csv", data.table=F, na.strings="")
+vars<-c("eid","31-0.0","21022-0.0", "30800-0.0","30850-0.0","1488-0.0","1498-0.0","1200-0.0","20116-0.0","20446-0.0","21001-0.0","1558-0.0","4080-0.0","845-0.0","30800-1.0","30850-1.0","3456-0.0","3456-1.0","3456-2.0","3456-3.0","20116-1.0","20116-2.0","20116-3.0","1488-1.0","1498-1.0","1488-2.0","1498-2.0","1488-3.0","1498-3.0")	#"23407-0.0","23405-0.0","23406-0.0","22189-0.0",
+data<-df[,vars]
+colnames(data)<-c("phen_ID", "sex","age","Oestradiol","Testosterone","Tea","Coffee","insomnia","smk","dep","bmi","alc","sbp","edu","Oestradiol1","Testosterone1","nsmk0","nsmk1","nsmk2","nsmk3","smk1","smk2","smk3","Tea1","Coffee2","Tea2","Coffee1","Tea3","Coffee3")	#"tg","ldl","hdl","tdi",
+
+df<-fread("/projects/MRC-IEU/research/data/ukbiobank/phenotypic/applications/15825/released/2022-02-01/data/data.48736.csv", data.table=F, na.strings="")
+vars<-c("eid","53-0.0","53-1.0","53-2.0","53-3.0")
+data2<-df[,vars]
+colnames(data2)<-c("phen_ID","time0","time1","time2","time3")
+data<-merge(data,data2,by="phen_ID")
+
+
+#add IID to UKB data file
+##########################
+linker<-read.csv("/projects/MRC-IEU/research/data/ukbiobank/phenotypic/applications/15825/released/2019-05-02/data/linker_app15825.csv", header=T, sep=" ")
+colnames(linker)<-c("IID", "phen_ID")
+data<-merge(data, linker, by="phen_ID")
+
+#formatting data
+###########################
+data$insomnia[data$insomnia==-3]<-NA
+data$smk[data$smk==-3]<-NA
+data$dep[data$dep==-818]<-NA
+data$caff=data$Tea+data$Coffee
+data$caff[data$caff>0]<-1
+data$smkb<-data$smk
+data$smkb[data$smkb==1]<-0
+data$smkb[data$smkb==2]<-1
+data$smkc<-data$smk
+data$smkc[data$smkc==2]<-0
+
+
+data$nsmk0[data$smk==0|data$smk==1]<-0
+data$nsmk1[data$smk1==0|data$smk1==1]<-0
+data$nsmk2[data$smk2==0|data$smk2==1]<-0
+data$nsmk3[data$smk3==0|data$smk3==1]<-0
+
+#https://biobank.ndph.ox.ac.uk/ukb/coding.cgi?id=100402
+data$alc[data$alc==1]<-30 #conerting in frq per month
+data$alc[data$alc==2]<-14
+data$alc[data$alc==3]<-6
+data$alc[data$alc==4]<-2
+data$alc[data$alc==5]<-1
+data$alc[data$alc==6]<-0
+data$alc[data$alc==7]<-NA
+
+data$sleep<-data$insomnia
+data$sleep[data$sleep==1]<-0
+data$sleep[data$sleep==2]<-1
+data$sleep[data$sleep==3]<-1
+
+#data$tg<-scale(data$tg)
+#data$hdl<-scale(data$hdl)
+#data$ldl<-scale(data$ldl)
+
+
+data$time0 <-  as.numeric(format(   as.Date(data$time0,'%Y/%m/%d')  ,'%Y'))
+data$time1 <-  as.numeric(format(   as.Date(data$time1,'%Y/%m/%d')  ,'%Y'))
+data$time2 <-  as.numeric(format(   as.Date(data$time2,'%Y/%m/%d')  ,'%Y'))
+data$time3 <-  as.numeric(format(   as.Date(data$time3,'%Y/%m/%d')  ,'%Y'))
+
+data$caff0=scale(data$Tea)+scale(data$Coffee)
+data$caff1=scale(data$Tea1)+scale(data$Coffee1)
+data$caff2=scale(data$Tea2)+scale(data$Coffee2)
+data$caff3=scale(data$Tea3)+scale(data$Coffee3)
+
+# adding PCs etc
+#########################
+ncol(data) #need to be FID IID
+data$FID<-data$IID
+
+cov<-read.table("/projects/MRC-IEU/research/data/ukbiobank/software/gwas_pipeline/dev/release_candidate/data/phenotypes/nf18217/input/covarpc40_noquote.txt",header=T)
+data<-merge(data,cov,by="FID")
+
+#data$FID<-data$IID.y
+data$IID<-data$IID.y
+
+
+# remove people who have withdrawn consent
+###########################################
+nrow(data)
+excldat2<-read.csv("bc3/myoits/meta.withdrawn.20200820.csv",header=F) 
+data<-data[!(data$phen_ID %in% excldat2$V1),]
+nrow(data)
+head(data)
+
+#QC
+#########################################
+#sex chrome aneuploidy, het missing, sex mismatch
+genex<-read.table("/mnt/storage/private/mrcieu/users/nf18217/private/exclusions/data.combined_recommended.qctools.txt")
+data<-data[!(data$IID %in% genex$V1),]
+
+#non white british
+nonwb<-read.table("/mnt/storage/private/mrcieu/users/nf18217/private/exclusions/data.non_white_british.qctools.txt") #non wihite brittish = v1
+data<-data[!(data$IID %in% nonwb$V1),]
+
+#those closely related
+rel<-read.table("/mnt/storage/private/mrcieu/users/nf18217/private/exclusions/data.highly_relateds.qctools.txt")
+data<-data[!(data$IID %in% rel$V1),]
+
+#those minimal related
+minrel<-read.table("/mnt/storage/private/mrcieu/users/nf18217/private/exclusions/data.minimal_relateds.qctools.txt")
+data<-data[!(data$IID %in% minrel$V1),]
+
+
+
+
+#grs
+##########
+
+##caff
+caff<-read.csv("/mnt/storage/scratch/nf18217/grscaff.csv")
+colnames(caff)<-c("IID","caff_grs")
+data<-merge(data,caff,by="IID")
+
+##smk
+smk<-read.csv("/mnt/storage/scratch/nf18217/grssmk.csv")
+colnames(smk)<-c("IID","smk_grs")
+data<-merge(data,smk,by="IID")
+
+
+#analysis 
+#############
+
+##smoking
+summary(lm(smk~caff_grs+PC1+PC2+PC3+PC4+PC5+PC6+PC7+PC8+PC9+PC10+age.x+sex.x,data=data))
+summary(lm(smk~caff_grs+PC1+PC2+PC3+PC4+PC5+PC6+PC7+PC8+PC9+PC10+age.x+sex.x,data=data[data$caff==0,]))
+summary(lm(smk_grs~caff_grs+PC1+PC2+PC3+PC4+PC5+PC6+PC7+PC8+PC9+PC10+age.x+sex.x,data=data[data$caff==0,]))
+summary(lm(smk~caff_grs+PC1+PC2+PC3+PC4+PC5+PC6+PC7+PC8+PC9+PC10+age.x+sex.x,data=data[data$caff>0,]))
+summary(lm(smk_grs~caff_grs+PC1+PC2+PC3+PC4+PC5+PC6+PC7+PC8+PC9+PC10+age.x+sex.x,data=data[data$caff>0,]))
+#summary(lm(smk~caff_grs*caff+PC1+PC2+PC3+PC4+PC5+PC6+PC7+PC8+PC9+PC10+age.x+sex.x,data=data))
+
+
+
+
+summary(data[!is.na(data$smk),])
+summary(data[data$caff>0 & !is.na(data$smk),])
+summary(data[data$caff==0 & !is.na(data$smk),])
+
+
+
+
+#smk c = past, smk b = current 
+summary(data[!is.na(data$smk),c("smkc","smkb")])
+summary(data[data$caff>0 & !is.na(data$smk),c("smkc","smkb")])
+summary(data[data$caff==0 & !is.na(data$smk),c("smkc","smkb")])
+
+
+###################################################
+# fixed effects 
+################################################
+
+
+dat2<-data[c("phen_ID", "nsmk2","caff2","time2")]
+colnames(dat2)<-c("phen_ID", "nsmk","caff","time")
+dat3<-data[c("phen_ID", "nsmk3","caff3","time3")]
+colnames(dat3)<-c("phen_ID", "nsmk","caff","time")
+
+
+dat<-rbind(dat3,dat2)
+
+fe = feols(nsmk ~ caff | phen_ID + time, dat, "twoway")
+summary(fe, vcov = "twoway")
+
+
+
+
